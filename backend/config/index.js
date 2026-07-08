@@ -52,8 +52,8 @@ const config = {
     authMaxRequests: parseInt(process.env.RATE_LIMIT_AUTH_MAX || '10', 10),
   },
 
-  // AI / Gemini
-  geminiApiKey: process.env.GEMINI_API_KEY || '',
+  // AI / Groq
+  groqApiKey: process.env.GROQ_API_KEY || '',
 };
 
 export default config;

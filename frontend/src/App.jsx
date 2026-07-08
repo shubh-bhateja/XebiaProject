@@ -26,7 +26,7 @@ import AssetsPage from './pages/AssetsPage';
 import TicketsPage from './pages/TicketsPage';
 import SettingsPage from './pages/SettingsPage';
 
-const API_BASE = ''; // Uses Vite proxy (direct calls to /api)
+const API_BASE = import.meta.env.VITE_API_URL || '';
 
 // Helper to format currency
 const formatCurrency = (val) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(val);
@@ -69,6 +69,7 @@ export default function App() {
   const [tasks, setTasks] = useState([]);
   const [assets, setAssets] = useState([]);
   const [tickets, setTickets] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
 
   // AI Assistant Chat Panel State
   const [showAi, setShowAi] = useState(false);
@@ -169,9 +170,10 @@ export default function App() {
   const fetchDashboardData = async () => {
     const role = localStorage.getItem('role') || userRole;
     const isReviewer = ['SUPER_ADMIN', 'HR', 'MANAGER'].includes(role);
+    const isSuperOrAuditor = ['SUPER_ADMIN', 'AUDITOR'].includes(role);
     try {
       const [
-        depRes, empRes, candRes, attRes, lvRes, payRes, projRes, tskRes, assetRes, tktRes, pendingLvRes
+        depRes, empRes, candRes, attRes, lvRes, payRes, projRes, tskRes, assetRes, tktRes, pendingLvRes, auditLogsRes
       ] = await Promise.allSettled([
         apiFetch('/api/organization/departments'),
         apiFetch('/api/employees'),
@@ -183,8 +185,16 @@ export default function App() {
         apiFetch('/api/projects/tasks'),
         apiFetch('/api/assets'),
         apiFetch('/api/tickets'),
-        isReviewer ? apiFetch('/api/leaves/pending') : Promise.resolve({ success: true, leaves: [] })
+        isReviewer ? apiFetch('/api/leaves/pending') : Promise.resolve({ success: true, leaves: [] }),
+        isSuperOrAuditor ? apiFetch('/api/organization/audit-logs') : Promise.resolve({ success: true, logs: [] })
       ]);
+
+      const isFailed = empRes.status === 'rejected' || !empRes.value || !empRes.value.success;
+      if (isFailed) {
+        console.warn("Backend API not reachable or database connection failed. Loading local mock fallback data.");
+        loadFallbackMockData();
+        return;
+      }
 
       if (depRes.status === 'fulfilled' && depRes.value.success) setDepartments(depRes.value.departments);
       if (empRes.status === 'fulfilled' && empRes.value.success) setEmployees(empRes.value.employees);
@@ -200,6 +210,7 @@ export default function App() {
       if (assetRes.status === 'fulfilled' && assetRes.value.success) setAssets(assetRes.value.assets);
       if (tktRes.status === 'fulfilled' && tktRes.value.success) setTickets(tktRes.value.tickets);
       if (pendingLvRes.status === 'fulfilled' && pendingLvRes.value.success) setPendingLeaves(pendingLvRes.value.leaves || []);
+      if (auditLogsRes.status === 'fulfilled' && auditLogsRes.value.success) setAuditLogs(auditLogsRes.value.logs || []);
     } catch (err) {
       console.warn("Failed to contact backend API. App running with mock simulation data.");
       loadFallbackMockData();
@@ -249,6 +260,13 @@ export default function App() {
     ]);
     setTickets([
       { _id: 'tk1', employeeId: 'EMP003', title: 'VPN Access Request', description: 'Need credentials for remote staging server.', priority: 'Medium', status: 'Open' }
+    ]);
+    setAuditLogs([
+      { _id: 'al1', action: 'Create Department', details: 'Department Engineering created', createdAt: new Date(Date.now() - 3600000).toISOString() },
+      { _id: 'al2', action: 'Update Employee', details: 'Employee EMP003 profile updated', createdAt: new Date(Date.now() - 7200000).toISOString() },
+      { _id: 'al3', action: 'Run Payroll', details: 'Payroll executed for June 2026', createdAt: new Date(Date.now() - 86400000).toISOString() },
+      { _id: 'al4', action: 'Asset Assigned', details: 'MacBook Pro 16" assigned to employee Rahul Sharma', createdAt: new Date(Date.now() - 172800000).toISOString() },
+      { _id: 'al5', action: 'Add Candidate', details: 'Candidate Priya Singh added to screening pipeline', createdAt: new Date(Date.now() - 259200000).toISOString() }
     ]);
   };
 
@@ -309,6 +327,7 @@ export default function App() {
       localStorage.setItem('userId', 'mock_user_id');
       localStorage.setItem('employeeId', employeeId);
       localStorage.setItem('name', name);
+      document.cookie = "accessToken=offline-mock-token; path=/;";
 
       setIsAuthenticated(true);
       setUserRole(role);
@@ -641,7 +660,7 @@ export default function App() {
               <Bot size={13} style={{ color: 'var(--primary)' }} />
               <input 
                 type="password" 
-                placeholder="Optional Gemini Key" 
+                placeholder="Optional Groq API Key" 
                 style={{ background: 'transparent', border: 'none', color: 'white', width: '120px', fontSize: '11px', outline: 'none' }}
                 value={customApiKey}
                 onChange={(e) => setCustomApiKey(e.target.value)}
@@ -679,11 +698,39 @@ export default function App() {
         <Routes>
           <Route path="/" element={
             <DashboardOverview 
-              employees={employees} projects={projects} leaves={leaves}
-              assets={assets} tasks={tasks} gpsSimulated={gpsSimulated}
-              setGpsSimulated={setGpsSimulated} qrSimulated={qrSimulated}
-              setQrSimulated={setQrSimulated} handleClockIn={handleClockIn}
+              employees={employees} 
+              projects={projects} 
+              leaves={leaves}
+              assets={assets} 
+              tasks={tasks} 
+              gpsSimulated={gpsSimulated}
+              setGpsSimulated={setGpsSimulated} 
+              qrSimulated={qrSimulated}
+              setQrSimulated={setQrSimulated} 
+              handleClockIn={handleClockIn}
               handleClockOut={handleClockOut}
+              userRole={userRole}
+              userName={userName}
+              empId={empId}
+              userId={userId}
+              departments={departments}
+              candidates={candidates}
+              pendingLeaves={pendingLeaves}
+              payroll={payroll}
+              tickets={tickets}
+              auditLogs={auditLogs}
+              setAuditLogs={setAuditLogs}
+              setShowAddEmp={setShowAddEmp}
+              setShowAddDep={setShowAddDep}
+              setShowAddProj={setShowAddProj}
+              setShowAddCand={setShowAddCand}
+              setShowAddTicket={setShowAddTicket}
+              setShowAddAsset={setShowAddAsset}
+              handleLeaveReview={handleLeaveReview}
+              handleRunPayroll={handleRunPayroll}
+              handleTaskStatusChange={handleTaskStatusChange}
+              apiFetch={apiFetch}
+              fetchDashboardData={fetchDashboardData}
             />
           } />
           

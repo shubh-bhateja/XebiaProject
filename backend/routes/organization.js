@@ -113,4 +113,19 @@ router.delete('/departments/:id', authenticateToken, requireRole(['SUPER_ADMIN',
   res.json({ success: true, message: 'Department archived successfully.' });
 });
 
+// Get all audit logs (SUPER_ADMIN and AUDITOR only)
+router.get('/audit-logs', authenticateToken, requireRole(['SUPER_ADMIN', 'AUDITOR']), async (req, res) => {
+  try {
+    const logs = await db.auditLogs.find();
+    const sortedLogs = [...logs].sort((a, b) => {
+      const dateA = a.createdAt || a.timestamp || '';
+      const dateB = b.createdAt || b.timestamp || '';
+      return new Date(dateB) - new Date(dateA);
+    }).slice(0, 100);
+    res.json({ success: true, logs: sortedLogs });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 export default router;

@@ -129,51 +129,45 @@ I am your **AI Operations Assistant**. I can help you with:
 How can I assist you today?`;
   }
 
-  // 4. Real Gemini Integration if API key is provided
-  const apiKey = customApiKey || process.env.GEMINI_API_KEY;
+  // 4. Real Groq Integration if API key is provided
+  const apiKey = customApiKey || process.env.GROQ_API_KEY;
   if (apiKey) {
     try {
-      // 4.1 Filter and limit context to recent data only (Phase 8.1)
+      // 4.1 Filter and limit context to recent data only
       const recentLeaves = leaves.slice(-5);
       const recentAttendance = attendance.slice(-15);
       const recentPayroll = payroll.slice(-3);
       const recentPerformance = performance.slice(-2);
 
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            // 4.2 Use systemInstruction to isolate trusted prompt from user input (Phase 8.2)
-            systemInstruction: {
-              parts: [{
-                text: `You are an Enterprise Workforce AI Assistant. Respond in markdown.
+      const Groq = (await import('groq-sdk')).default;
+      const groq = new Groq({ apiKey: apiKey });
+
+      const systemPrompt = `You are an Enterprise Workforce AI Assistant. Respond in markdown.
+You must ONLY answer questions based on the provided context (policies, leaves, payroll, attendance, performance) and the user's employment details. 
+Under NO CIRCUMSTANCES should you answer general knowledge, coding, or non-workforce questions. If the user asks about ANY topic outside of their workforce data, politely decline to answer.
+
 User Role: ${user.role}
 Employee Details: ${JSON.stringify(employee)}
 Leaves Details: ${JSON.stringify(recentLeaves)}
 Attendance Details: ${JSON.stringify(recentAttendance)}
 Payroll Details: ${JSON.stringify(recentPayroll)}
 Performance Reviews: ${JSON.stringify(recentPerformance)}
-Company Policies: ${policies}`
-              }]
-            },
-            contents: [{
-              role: "user",
-              parts: [{
-                text: message
-              }]
-            }]
-          })
-        }
-      );
+Company Policies: ${policies}`;
 
-      const data = await response.json();
-      if (data.candidates && data.candidates[0].content.parts[0].text) {
-        responseText = data.candidates[0].content.parts[0].text;
+      const chatCompletion = await groq.chat.completions.create({
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: message }
+        ],
+        model: 'llama-3.1-8b-instant',
+        temperature: 0.2,
+      });
+
+      if (chatCompletion.choices && chatCompletion.choices[0].message.content) {
+        responseText = chatCompletion.choices[0].message.content;
       }
     } catch (err) {
-      console.warn("External Gemini API call failed. Falling back to local intelligence engine.", err);
+      console.warn("External Groq API call failed. Falling back to local intelligence engine.", err);
     }
   }
 
